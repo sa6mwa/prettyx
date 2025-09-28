@@ -1,0 +1,13 @@
+/prettyx
+/.gocache
+bin/
+\#*\#
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.log
+vendor/
+.env
+.env.local
