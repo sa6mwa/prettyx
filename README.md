@@ -51,7 +51,7 @@ import (
 )
 
 func main() {
-    src := []byte(`{"foo":"{"nested":true}"}`)
+    src := []byte(`{"foo":"{\"nested\":true}"}`)
     pretty, err := prettyx.Pretty(src, nil)
     if err != nil {
         log.Fatal(err)
