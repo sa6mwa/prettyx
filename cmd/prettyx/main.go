@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sa6mwa/prettyx"
+	"pkt.systems/prettyx"
 )
 
 func main() {

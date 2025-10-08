@@ -5,7 +5,7 @@ prettyx formats JSON with deterministic indentation and optional syntax highligh
 ## Install the CLI
 
 ```
-go install github.com/sa6mwa/prettyx/cmd/prettyx@latest
+go install pkt.systems/prettyx/cmd/prettyx@latest
 ```
 
 Run `prettyx` with one or more JSON files (use `-` for stdin). Add `-no-color` to force plain output. Use `-no-unwrap` to skip decoding JSON appearing inside string values.
@@ -47,7 +47,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/sa6mwa/prettyx"
+    "pkt.systems/prettyx"
 )
 
 func main() {

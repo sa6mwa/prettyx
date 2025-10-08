@@ -1,4 +1,4 @@
-module github.com/sa6mwa/prettyx
+module pkt.systems/prettyx
 
 go 1.25.1
 
