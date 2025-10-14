@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,18 +13,22 @@ import (
 )
 
 func main() {
+	var forceColor bool
+	flag.BoolVar(&forceColor, "C", false, "force colorized output even when writing to a non-TTY")
+	flag.BoolVar(&forceColor, "color-force", false, "force colorized output even when writing to a non-TTY")
 	noColor := flag.Bool("no-color", false, "disable colorized output, even when writing to a TTY")
 	noUnwrap := flag.Bool("no-unwrap", false, "preserve JSON-looking strings without decoding")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags] file [file...]\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags] [file...]\n", os.Args[0])
+		fmt.Fprintln(flag.CommandLine.Output(), "Reads from stdin when no files are provided.")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	if flag.NArg() == 0 {
-		flag.Usage()
-		os.Exit(2)
+	args := flag.Args()
+	if len(args) == 0 {
+		args = []string{"-"}
 	}
-	renderer := lipgloss.NewRenderer(os.Stdout)
+	renderer := prettyx.NewRenderer(os.Stdout, forceColor)
 	var palette *prettyx.ColorPalette
 	if *noColor {
 		nc := prettyx.NoColorPalette(renderer)
@@ -32,31 +38,56 @@ func main() {
 	if *noUnwrap {
 		opts.NoUnwrap = true
 	}
-	for _, path := range flag.Args() {
-		data, err := readInput(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "prettyjson: %s\n", err)
-			os.Exit(1)
-		}
-		out, err := prettyx.PrettyWithRenderer(data, &opts, renderer, palette)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "prettyjson: %s: %v\n", path, err)
-			os.Exit(1)
-		}
-		if _, err := os.Stdout.Write(out); err != nil {
-			fmt.Fprintf(os.Stderr, "prettyjson: write error: %v\n", err)
+	if forceColor {
+		opts.ForceColor = true
+	}
+	for _, path := range args {
+		if err := streamJSON(path, renderer, palette, &opts); err != nil {
+			fmt.Fprintf(os.Stderr, "prettyjson: %v\n", err)
 			os.Exit(1)
 		}
 	}
 }
 
-func readInput(path string) ([]byte, error) {
-	if path == "-" {
-		return io.ReadAll(os.Stdin)
-	}
-	data, err := os.ReadFile(path)
+func streamJSON(path string, renderer *lipgloss.Renderer, palette *prettyx.ColorPalette, opts *prettyx.Options) error {
+	reader, closer, err := openInput(path)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return err
 	}
-	return data, nil
+	if closer != nil {
+		defer closer.Close()
+	}
+	dec := json.NewDecoder(reader)
+	dec.UseNumber()
+	source := path
+	if path == "-" {
+		source = "<stdin>"
+	}
+	for {
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return fmt.Errorf("%s: %w", source, err)
+		}
+		out, err := prettyx.PrettyWithRenderer(raw, opts, renderer, palette)
+		if err != nil {
+			return fmt.Errorf("%s: %w", source, err)
+		}
+		if _, err := os.Stdout.Write(out); err != nil {
+			return fmt.Errorf("write error: %w", err)
+		}
+	}
+}
+
+func openInput(path string) (io.Reader, io.Closer, error) {
+	if path == "-" {
+		return os.Stdin, nil, nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return file, file, nil
 }

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // MaxNestedJSONDepth controls how deep we recursively parse JSON that appears
@@ -42,10 +43,23 @@ type Options struct {
 	// jq's default behaviour (unless you call fromjson) and mirrors the CLI's
 	// -no-unwrap flag. When true, prettyx leaves any JSON-looking strings as-is.
 	NoUnwrap bool
+	// ForceColor forces lipgloss to emit ANSI color even when the destination
+	// writer is not detected as a TTY.
+	ForceColor bool
 }
 
 // DefaultOptions holds the fallback pretty-print configuration.
-var DefaultOptions = &Options{Width: 80, Prefix: "", Indent: "  ", SortKeys: false, NoUnwrap: false}
+var DefaultOptions = &Options{Width: 80, Prefix: "", Indent: "  ", SortKeys: false, NoUnwrap: false, ForceColor: false}
+
+// NewRenderer returns a lipgloss renderer configured for the given writer. When
+// forceColor is true, ANSI colors will be emitted even if the writer does not
+// look like a TTY (via termenv's unsafe mode).
+func NewRenderer(w io.Writer, forceColor bool) *lipgloss.Renderer {
+	if forceColor {
+		return lipgloss.NewRenderer(w, termenv.WithUnsafe())
+	}
+	return lipgloss.NewRenderer(w)
+}
 
 // prettyBuffer formats JSON using the provided options (or DefaultOptions).
 // It retains the core tidwall/pretty behavior without unwrapping or coloring
@@ -72,7 +86,8 @@ func prettyBuffer(jsonBytes []byte, opts *Options) []byte {
 // returning the resulting bytes. The renderer automatically adapts to the
 // detected color capabilities of os.Stdout.
 func Pretty(in []byte, opts *Options) ([]byte, error) {
-	renderer := lipgloss.NewRenderer(os.Stdout)
+	forceColor := opts != nil && opts.ForceColor
+	renderer := NewRenderer(os.Stdout, forceColor)
 	return PrettyWithRenderer(in, opts, renderer, nil)
 }
 
@@ -87,6 +102,10 @@ func PrettyWithRenderer(in []byte, opts *Options, renderer *lipgloss.Renderer, p
 		return nil, err
 	}
 
+	forceColor := false
+	if opts != nil && opts.ForceColor {
+		forceColor = true
+	}
 	if opts == nil {
 		opts = DefaultOptions
 	}
@@ -107,7 +126,7 @@ func PrettyWithRenderer(in []byte, opts *Options, renderer *lipgloss.Renderer, p
 	pretty := prettyBuffer(min, opts)
 
 	if renderer == nil {
-		renderer = lipgloss.NewRenderer(os.Stdout)
+		renderer = NewRenderer(os.Stdout, forceColor)
 	}
 	pal := ColorPalette{}
 	if palette == nil {
@@ -123,7 +142,8 @@ func PrettyWithRenderer(in []byte, opts *Options, renderer *lipgloss.Renderer, p
 // writer using a renderer bound to that writer. Colors degrade
 // automatically when the writer is not a TTY.
 func PrettyTo(w io.Writer, in []byte, opts *Options, palette *ColorPalette) error {
-	renderer := lipgloss.NewRenderer(w)
+	forceColor := opts != nil && opts.ForceColor
+	renderer := NewRenderer(w, forceColor)
 	out, err := PrettyWithRenderer(in, opts, renderer, palette)
 	if err != nil {
 		return err

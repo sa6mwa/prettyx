@@ -14,7 +14,8 @@ By default prettyx unwraps JSON strings recursively so nested documents become o
 
 ```
 prettyx payload.json other.json
-cat payload.json | prettyx -no-color -
+cat payload.json | prettyx -no-color
+cat payload.json | prettyx -C | less -R
 ```
 
 ## jq equivalent
