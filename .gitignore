@@ -1,3 +1,4 @@
+testdata/
 /prettyx
 /.gocache
 bin/
@@ -8,6 +9,8 @@ bin/
 *.swo
 *~
 *.log
+*.test
+*.pprof
+*.out
 vendor/
-.env
-.env.local
+.env*

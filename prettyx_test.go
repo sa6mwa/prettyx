@@ -7,9 +7,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 )
 
 var (
@@ -19,7 +16,10 @@ var (
   "message": "ok",
   "payload": {
     "bar": {
-      "list": [10, 20],
+      "list": [
+        10,
+        20
+      ],
       "nested": {
         "inner": true
       }
@@ -28,23 +28,29 @@ var (
   }
 }
 `
+	expectedSemiCompactNoColors = `{
+  "count": 2, "message": "ok", "payload": {
+    "bar": {
+      "list": [10, 20], "nested": {
+        "inner": true
+      }
+    }, "foo": 1
+  }
+}
+`
 )
 
-func TestPrettyWithRenderer_UnwrapsNestedJSON(t *testing.T) {
+func TestPretty_UnwrapsNestedJSON(t *testing.T) {
 	t.Cleanup(func() { MaxNestedJSONDepth = 10 })
 	MaxNestedJSONDepth = 4
 
 	optsValue := *DefaultOptions
-	optsValue.SortKeys = true
-	optsValue.NoUnwrap = false
+	optsValue.Unwrap = true
+	optsValue.Palette = "none"
 
-	var sink bytes.Buffer
-	renderer := lipgloss.NewRenderer(&sink)
-	renderer.SetColorProfile(termenv.Ascii)
-
-	out, err := PrettyWithRenderer(sampleJSON, &optsValue, renderer, nil)
+	out, err := Pretty(sampleJSON, &optsValue)
 	if err != nil {
-		t.Fatalf("PrettyWithRenderer failed: %v", err)
+		t.Fatalf("Pretty failed: %v", err)
 	}
 
 	if actual := string(out); actual != expectedNoColors {
@@ -56,16 +62,35 @@ func TestPrettyWithRenderer_UnwrapsNestedJSON(t *testing.T) {
 	}
 }
 
+func TestPretty_SemiCompactMatchesTidwallStyle(t *testing.T) {
+	t.Cleanup(func() { MaxNestedJSONDepth = 10 })
+	MaxNestedJSONDepth = 4
+
+	optsValue := *DefaultOptions
+	optsValue.Unwrap = true
+	optsValue.SemiCompact = true
+	optsValue.Palette = "none"
+
+	out, err := Pretty(sampleJSON, &optsValue)
+	if err != nil {
+		t.Fatalf("Pretty failed: %v", err)
+	}
+
+	if actual := string(out); actual != expectedSemiCompactNoColors {
+		t.Fatalf("unexpected semi-compact output\nexpected:\n%q\nactual:\n%q", expectedSemiCompactNoColors, actual)
+	}
+}
+
 func TestPrettyTo_WritesOutput(t *testing.T) {
 	t.Cleanup(func() { MaxNestedJSONDepth = 10 })
 	MaxNestedJSONDepth = 4
 
 	optsValue := *DefaultOptions
-	optsValue.SortKeys = true
-	optsValue.NoUnwrap = false
+	optsValue.Unwrap = true
+	optsValue.Palette = "none"
 
 	var buf bytes.Buffer
-	if err := PrettyTo(&buf, sampleJSON, &optsValue, nil); err != nil {
+	if err := PrettyTo(&buf, sampleJSON, &optsValue); err != nil {
 		t.Fatalf("PrettyTo failed: %v", err)
 	}
 
@@ -79,32 +104,55 @@ func TestPrettyTo_WritesOutput(t *testing.T) {
 	}
 }
 
-func TestPrettyWithRenderer_NoUnwrapDisablesUnwrap(t *testing.T) {
+func TestPretty_UnwrapDisabledByDefault(t *testing.T) {
 	t.Cleanup(func() { MaxNestedJSONDepth = 10 })
 	MaxNestedJSONDepth = 4
 
 	optsValue := *DefaultOptions
-	optsValue.SortKeys = true
-	optsValue.NoUnwrap = true
+	optsValue.Unwrap = false
+	optsValue.Palette = "none"
 
-	var sink bytes.Buffer
-	renderer := lipgloss.NewRenderer(&sink)
-	renderer.SetColorProfile(termenv.Ascii)
-
-	out, err := PrettyWithRenderer(sampleJSON, &optsValue, renderer, nil)
+	out, err := Pretty(sampleJSON, &optsValue)
 	if err != nil {
-		t.Fatalf("PrettyWithRenderer failed: %v", err)
+		t.Fatalf("Pretty failed: %v", err)
 	}
 
-	const expectedNoUnwrap = `{
+	const expectedUnwrapDisabled = `{
   "count": 2,
   "message": "ok",
   "payload": "{\"bar\":{\"list\":\"[10,20]\",\"nested\":\"{\\\"inner\\\":true}\"},\"foo\":1}"
 }
 `
 
-	if string(out) != expectedNoUnwrap {
-		t.Fatalf("unexpected output for no-unwrap\nexpected:\n%q\nactual:\n%q", expectedNoUnwrap, out)
+	if string(out) != expectedUnwrapDisabled {
+		t.Fatalf("unexpected output with unwrap disabled\nexpected:\n%q\nactual:\n%q", expectedUnwrapDisabled, out)
+	}
+}
+
+func TestPretty_PaletteNoneDisablesColor(t *testing.T) {
+	optsValue := *DefaultOptions
+	optsValue.Unwrap = true
+	optsValue.Palette = "none"
+
+	out, err := Pretty(sampleJSON, &optsValue)
+	if err != nil {
+		t.Fatalf("Pretty failed: %v", err)
+	}
+
+	if string(out) != expectedNoColors {
+		t.Fatalf("unexpected output for palette none\nexpected:\n%q\nactual:\n%q", expectedNoColors, out)
+	}
+	if strings.ContainsRune(string(out), '\u001b') {
+		t.Fatalf("expected output without color codes, found escape sequence: %q", out)
+	}
+}
+
+func TestPretty_UnknownPalette(t *testing.T) {
+	optsValue := *DefaultOptions
+	optsValue.Palette = "does-not-exist"
+
+	if _, err := Pretty(sampleJSON, &optsValue); err == nil {
+		t.Fatalf("expected error for unknown palette")
 	}
 }
 
@@ -114,16 +162,12 @@ func TestPrettyMatchesJQFromJSON(t *testing.T) {
 	}
 
 	optsValue := *DefaultOptions
-	optsValue.SortKeys = true
-	optsValue.NoUnwrap = false
+	optsValue.Unwrap = true
+	optsValue.Palette = "none"
 
-	var sink bytes.Buffer
-	renderer := lipgloss.NewRenderer(&sink)
-	renderer.SetColorProfile(termenv.Ascii)
-
-	prettyOut, err := PrettyWithRenderer(sampleJSON, &optsValue, renderer, nil)
+	prettyOut, err := Pretty(sampleJSON, &optsValue)
 	if err != nil {
-		t.Fatalf("PrettyWithRenderer failed: %v", err)
+		t.Fatalf("Pretty failed: %v", err)
 	}
 
 	const jqProgram = `def trim($s):
